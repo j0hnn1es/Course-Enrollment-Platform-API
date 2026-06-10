@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  db_engine:
+    image: postgres:15-alpine
+    container_name: course_postgres_container
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: supersecurepassword123
+      POSTGRES_DB: course_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data_volume:/var/lib/postgresql/data
+    networks:
+      - platform_internal_network
+
+  redis_cache:
+    image: redis:7-alpine
+    container_name: course_redis_container
+    ports:
+      - "6379:6379"
+    networks:
+      - platform_internal_network
+
+  web_api:
+    build: .
+    container_name: course_fastapi_container
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:supersecurepassword123@db_engine:5432/course_db
+      - REDIS_URL=redis://redis_cache:6379/0
+      - SECRET_KEY=CONTAINER_LOCAL_RUNTIME_DEVELOPMENT_SECRET_HASH_KEY
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60
+    depends_on:
+      - db_engine
+      - redis_cache
+    networks:
+      - platform_internal_network
+
+volumes:
+  postgres_data_volume:
+
+networks:
+  platform_internal_network:
+    driver: bridge

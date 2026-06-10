@@ -27,10 +27,11 @@ def test_health_endpoint(tmp_path):
     with TestClient(app) as client:
         response = client.get("/health")
         assert response.status_code == 200
-        assert response.json() == {
-            "status": "operational",
-            "engine": "FastAPI Uvicorn Execution Layer",
-        }
+        response_body = response.json()
+        assert response_body["status"] == "operational"
+        assert response_body["engine"] == "FastAPI Uvicorn Execution Layer"
+        assert "database" in response_body
+        assert "cache" in response_body
 
 
 def test_courses_endpoint_returns_list(tmp_path):
@@ -40,5 +41,10 @@ def test_courses_endpoint_returns_list(tmp_path):
     with TestClient(app) as client:
         response = client.get("/courses")
         assert response.status_code == 200
-        assert isinstance(response.json(), list)
-        assert response.json() == []
+        assert response.json() == {
+            "total_items": 0,
+            "page": 1,
+            "size": 10,
+            "total_pages": 1,
+            "items": []
+        }

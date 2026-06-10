@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: course-enrollment-platform
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: true
+      - key: REDIS_URL
+        sync: true

@@ -20,3 +20,10 @@ class CourseResponse(CourseBase):
     id: int
     class Config:
         from_attributes = True
+
+class PaginatedCourseResponse(BaseModel):
+    total_items: int
+    page: int
+    size: int
+    total_pages: int
+    items: list[CourseResponse]
