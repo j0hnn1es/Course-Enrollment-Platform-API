@@ -1,5 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 import app.models as models
 import app.schemas as schemas
@@ -22,16 +21,35 @@ def register_user(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.post("/login", response_model=schemas.Token)
-def login_user(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == form_data.username).first()
-    
+async def login_user(request: Request, db: Session = Depends(get_db)):
+    """Accept both form-encoded (OAuth2) and JSON login payloads.
+
+    Expects either form data `username`/`password` or JSON `username`/`password`.
+    """
+    username = None
+    password = None
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        body = await request.json()
+        username = body.get("username") or body.get("email")
+        password = body.get("password")
+    else:
+        form = await request.form()
+        username = form.get("username") or form.get("email")
+        password = form.get("password")
+
+    if not username or not password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing username or password.")
+
+    user = db.query(models.User).filter(models.User.email == username).first()
+
     # Custom Validation Check for Inactive State prior password processing
     if user and not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authentication Failure: This account is inactive.")
-        
-    if not user or not verify_password(form_data.password, user.hashed_password):
+
+    if not user or not verify_password(password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid account authorization credentials.")
-    
+
     token = create_access_token(data={"sub": user.email, "role": user.role})
     return {"access_token": token, "token_type": "bearer"}
 
