@@ -1,4 +1,5 @@
 from typing import Any
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from sqlalchemy import text
@@ -6,37 +7,58 @@ from sqlalchemy.orm import Session
 
 from app.routers import auth, courses, enrollments
 from app.models.base import Base
-from app.core import get_db
-from app.core.database import engine
+from app.core.database import get_db, engine # Ensure this matches your core imports
 from app.core.redis import get_redis, RedisError
 from app.middleware.cors import setup_cors_middleware
 from app.middleware.logging import ResponseTimingMiddleware
 
+# 1. Use Lifespan for Safe Database Table Generation on Startup
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handles startup and shutdown events clean and asynchronously."""
+    # Create database tables safely at application startup
+    Base.metadata.create_all(bind=engine)
+    yield
+    # Shutdown clean up logic can go here if needed
 
 app = FastAPI(
     title="Course Enrollment Platform Core Platform",
     version="1.0.0",
-    description="FastAPI service enforcing multi-tier constraint engines, clean schema validation layers, and role matrix mapping."
+    description="FastAPI service enforcing multi-tier constraint engines, clean schema validation layers, and role matrix mapping.",
+    lifespan=lifespan
 )
 
-# Setup middleware
+# 2. Setup Middleware Layout
 setup_cors_middleware(app)
 app.add_middleware(ResponseTimingMiddleware)
 
-@app.on_event("startup")
-def create_tables() -> None:
-    """Create database tables at application startup, not at import time."""
-    Base.metadata.create_all(bind=engine)
-
+# 3. Router Submodule Attachments
 app.include_router(auth.router)
 app.include_router(courses.router)
 app.include_router(enrollments.router)
 
+# 4. Correctly Placed Root Route
+@app.get("/")
+def read_root():
+    return {
+        "message": "Welcome to the Course Enrollment Platform API!",
+        "documentation": "/docs",
+        "status": "operational"
+    }
+
+# 5. Lightweight Container Health Check (Targeted by Docker / Render)
 @app.get("/health")
-async def infrastructure_health_status(
+def shallow_health_status():
+    """Simple 200 OK ping to keep the cloud container runner active."""
+    return {"status": "operational", "engine": "FastAPI Uvicorn Container Layer"}
+
+# 6. Deep Subsystem Health Check (For Internal Monitoring)
+@app.get("/health/deep")
+async def deep_infrastructure_health_status(
     db: Session = Depends(get_db),
     redis: Any = Depends(get_redis),
 ):
+    """Checks the live connectivity status of Postgres and Redis."""
     health = {
         "status": "operational",
         "engine": "FastAPI Uvicorn Execution Layer",
@@ -60,43 +82,3 @@ async def infrastructure_health_status(
         health["cache"] = "unavailable"
 
     return health
-# from fastapi import FastAPI
-# from fastapi.middleware.cors import CORSMiddleware
-
-# from app.routers import auth, courses, enrollments
-# from app.middleware.logging import ResponseTimingMiddleware
-# from app.core import engine
-# from app.models.base import Base
-
-# # Automatically create local schema states initially if running outside migration sequences
-# Base.metadata.create_all(bind=engine)
-
-# app = FastAPI(
-#     title="Course Enrollment Platform Core Platform",
-#     version="2.0.0",
-#     description="Containerized system utilizing security middleware and performance timing tracking metrics."
-# )
-
-# # --- 1. CORE MIDDLEWARE MOUNTING LAYER ---
-
-# # Enforce Cross-Origin Resource Sharing rules to prevent browser scripting hacks
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],  # Adjust this to precise production domain arrays on live web hosts
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# # Attach processing execution metrics tracker
-# app.add_middleware(ResponseTimingMiddleware)
-
-
-# # --- 2. ROUTER SUBMODULE ATTACHMENTS ---
-# app.include_router(auth.router)
-# app.include_router(courses.router)
-# app.include_router(enrollments.router)
-
-# @app.get("/health")
-# def infrastructure_health_status():
-#     return {"status": "operational", "engine": "FastAPI Uvicorn Container Layer"}
