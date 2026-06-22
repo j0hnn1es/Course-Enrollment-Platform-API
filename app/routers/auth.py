@@ -1,16 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 import app.models as models
 import app.schemas as schemas
 from app.core import get_db, get_current_user, RoleChecker, hash_password, verify_password, create_access_token
-
 
 router = APIRouter(prefix="/auth", tags=["User Identity Engine"])
 
 @router.post("/register", response_model=schemas.UserResponse, status_code=status.HTTP_201_CREATED)
 def register_user(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.email == user_in.email).first():
-        raise HTTPException(status_code=400, detail="Registration Constraint Error: Email mapping already exists.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail="Registration Constraint Error: Email mapping already exists."
+        )
     
     user_dict = user_in.model_dump()
     raw_password = user_dict.pop("password")
@@ -21,35 +24,32 @@ def register_user(user_in: schemas.UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.post("/login", response_model=schemas.Token)
-async def login_user(request: Request, db: Session = Depends(get_db)):
-    """Accept both form-encoded (OAuth2) and JSON login payloads.
-
-    Expects either form data `username`/`password` or JSON `username`/`password`.
+async def login_user(
+    form_data: OAuth2PasswordRequestForm = Depends(), # 👈 This unlocks the Swagger UI input fields!
+    db: Session = Depends(get_db)
+):
     """
-    username = None
-    password = None
-    content_type = request.headers.get("content-type", "")
-    if "application/json" in content_type:
-        body = await request.json()
-        username = body.get("username") or body.get("email")
-        password = body.get("password")
-    else:
-        form = await request.form()
-        username = form.get("username") or form.get("email")
-        password = form.get("password")
+    OAuth2 standard form-encoded login interface.
+    Accepts credentials through 'username' (email) and 'password' form body keys.
+    """
+    # Look up the user matching the form's username field
+    user = db.query(models.User).filter(models.User.email == form_data.username).first()
 
-    if not username or not password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing username or password.")
-
-    user = db.query(models.User).filter(models.User.email == username).first()
-
-    # Custom Validation Check for Inactive State prior password processing
+    # Custom Validation Check for Inactive State prior to password processing
     if user and not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Authentication Failure: This account is inactive.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Authentication Failure: This account is inactive."
+        )
 
-    if not user or not verify_password(password, user.hashed_password):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid account authorization credentials.")
+    # Validate user existence and verify plain-text password against DB hash
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Invalid account authorization credentials."
+        )
 
+    # Generate token payload tracking sub (email) and role Matrix mappings
     token = create_access_token(data={"sub": user.email, "role": user.role})
     return {"access_token": token, "token_type": "bearer"}
 
