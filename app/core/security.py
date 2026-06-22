@@ -11,7 +11,8 @@ from app.core.database import get_db      # Updated Import Path
 import app.models as models
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login") # 💡 Added leading slash
+
 
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
